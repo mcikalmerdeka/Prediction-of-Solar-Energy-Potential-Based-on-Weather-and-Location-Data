@@ -1,0 +1,1 @@
+# Prediction-of-Solar-Energy-Potential-Based-on-Weather-and-Location-Data

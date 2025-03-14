@@ -6,7 +6,9 @@
 
 - The anticipated surge in electricity demand, projected to increase by approximately 30% by 2035 according to the US Department of Energy, necessitates substantial investments in sustainable renewable energy resources to meet this growth. Addressing this challenge could be facilitated through the adoption of solar energy, as suggested by the same report. It indicates the potential for solar energy to contribute up to 40% of the country's electricity supply by 2035, a significant increase from its current contribution of 3%.
 
-- In order to enhance the solar energy infrastructure, identifying new locations with the utmost potential for consistent solar electricity generation becomes crucial. Utilizing predictive modeling, based on diverse features, can aid in pinpointing such sites.
+- In order to enhance the solar energy infrastructure, identifying new locations with the utmost potential for consistent solar electricity generation or even utilizing the amount of panels installed in a location becomes crucial. Utilizing predictive modeling, based on diverse features, can aid in pinpointing such sites.
+
+- The complete analysis can be found in the `Solar_Energy_Potential_Prediction.ipynb` file and the saved trained models of random forest and xtreme gradient boost for this project can be found in the `models` folder. The cross-validated main metric of R2 is similar to the paper (a little bit lower for this limited-resources project).
 
 ## Goal
 

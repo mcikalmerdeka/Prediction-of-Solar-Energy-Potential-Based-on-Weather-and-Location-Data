@@ -1,0 +1,7 @@
+[project]
+name = "prediction-of-solar-energy-potential-based-on-weather-and-location-data"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []

@@ -1,6 +1,6 @@
 # Prediction of Solar Energy Potential Based on Weather and Location Data
 
-![Project Header](assets/Project%20Header.jpg)
+![Project Header](assets/project-header.jpg)
 
 Predicting the power output of horizontal photovoltaic panels from weather, location, and
 time — then serving those models through an interactive Streamlit application.

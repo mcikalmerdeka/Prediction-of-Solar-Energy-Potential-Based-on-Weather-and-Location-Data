@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from solar_potential.analytics import predict_power, target_band, sensitivity
+from solar_potential.analytics import contributions, predict_power, target_band
 from solar_potential.data import preset_for
 from solar_potential.schema import (
     DISPLAY_NAMES,
@@ -16,7 +16,7 @@ from solar_potential.schema import (
     NUMERIC_FEATURES,
     SITE_NAMES,
 )
-from solar_potential.ui import gauge_chart, sensitivity_chart
+from solar_potential.ui import contribution_chart, gauge_chart
 
 SITE_KEY = "predict_site"
 MONTH_KEY = "predict_month"
@@ -54,6 +54,7 @@ def _render_result(result: dict, artifacts: dict) -> None:
             border=True,
         )
         st.metric("Band", target_band(predictions[selected]), border=True)
+        st.metric("vs typical", f"{result['total']:+.2f} W", border=True)
         st.metric("Site", result["site"], border=True)
         st.metric("Season", result["season"], border=True)
 
@@ -68,22 +69,41 @@ def _render_result(result: dict, artifacts: dict) -> None:
     with st.container(border=True):
         st.markdown("**What moved this prediction**")
         st.altair_chart(
-            sensitivity_chart(result["sensitivity"]), width="stretch"
+            contribution_chart(result["breakdown"]), width="stretch"
+        )
+
+        table = result["breakdown"].copy()
+        table["Change (W)"] = table["delta"].round(2)
+        st.dataframe(
+            table[["display", "input", "baseline", "Change (W)"]].rename(
+                columns={
+                    "display": "Feature",
+                    "input": "This value",
+                    "baseline": "Typical value",
+                }
+            ),
+            hide_index=True,
+            column_config={
+                "This value": st.column_config.NumberColumn(format="%.1f"),
+                "Typical value": st.column_config.NumberColumn(format="%.1f"),
+                "Change (W)": st.column_config.NumberColumn(format="%+.2f"),
+            },
         )
         st.caption(
-            "Each bar swaps one feature for this site's typical value at the chosen "
-            "month and hour, then re-scores. Positive bars add output relative to "
-            "typical conditions; negative bars reduce it."
+            f"Reference: the median observation across {result['n_rows']:,} rows "
+            f"(Month {result['baseline_month']:.0f}, Hour {result['baseline_hour']:.0f}). "
+            "Features are applied one at a time in model order, so the changes sum to "
+            f"{result['total']:+.2f} W. Correlated features share credit by order."
         )
 
     if len(predictions) > 1:
-        table = pd.DataFrame(
+        comparison = pd.DataFrame(
             {
                 "Model": list(predictions),
                 "Predicted output (W)": [round(value, 3) for value in predictions.values()],
             }
         )
-        st.dataframe(table, hide_index=True)
+        st.dataframe(comparison, hide_index=True)
 
     with st.expander("Model input (6 features)"):
         st.dataframe(result["model_input"], hide_index=True)
@@ -159,19 +179,24 @@ def render_predict_tab(artifacts: dict, dataset: pd.DataFrame, presets: pd.DataF
                 name: predict_power(artifact, model_input)
                 for name, artifact in artifacts.items()
             }
-            table = sensitivity(
-                artifacts[model], row, pd.Series(preset)[FEATURE_COLUMNS]
-            )
+            baseline = dataset[FEATURE_COLUMNS].median()
+            baseline["Month"] = float(round(baseline["Month"]))
+            baseline["Hour"] = float(round(baseline["Hour"]))
+            breakdown = contributions(artifacts[model], row, baseline)
         except Exception as exc:  # surface the reason instead of blanking the page
             st.error(f"Could not score these conditions: {exc}")
         else:
             st.session_state[RESULT_KEY] = {
                 "predictions": predictions,
                 "model": model,
-                "sensitivity": table,
+                "breakdown": breakdown,
+                "total": float(breakdown["delta"].sum()),
                 "model_input": model_input,
                 "site": site,
                 "season": MONTH_SEASON[month],
+                "n_rows": len(dataset),
+                "baseline_month": baseline["Month"],
+                "baseline_hour": baseline["Hour"],
             }
 
     result = st.session_state.get(RESULT_KEY)

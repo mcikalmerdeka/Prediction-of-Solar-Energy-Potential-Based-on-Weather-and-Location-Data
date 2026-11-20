@@ -67,38 +67,41 @@ def predict_power(artifact: Mapping[str, Any], frame: pd.DataFrame) -> float:
     return float(artifact["model"].predict(model_input)[0])
 
 
-def sensitivity(
+def contributions(
     artifact: Mapping[str, Any],
     row: pd.Series,
     baseline: pd.Series,
 ) -> pd.DataFrame:
-    """How much each feature moves this prediction away from typical conditions.
+    """Attribute the gap between this prediction and a reference prediction.
 
-    One-at-a-time occlusion: each feature is replaced by its baseline value and
-    the model is re-scored. The delta is that counterfactual minus the actual
-    prediction, so a positive value means the feature is pushing the prediction
-    up relative to typical conditions.
+    Walks the features in the model's own order: start from the baseline row,
+    set one feature to this row's value, and record how the prediction moved.
+    The deltas therefore sum exactly to ``predict(row) - predict(baseline)``,
+    which is the question a reader actually asks — "why is this score above or
+    below typical?".
 
-    This is a local approximation, not a Shapley decomposition. It is cheap
-    enough to run per request and works identically for both persisted models.
+    The decomposition is order-dependent: correlated features share credit
+    depending on which is applied first. That is inherent to any additive
+    attribution of a non-additive model, and it is why the caption says so.
     """
     features = list(artifact["feature_columns"])
-    actual = predict_power(artifact, row.to_frame().T)
+    current = baseline.copy()
+    previous = predict_power(artifact, current.to_frame().T)
 
     records = []
     for feature in features:
-        probe = row.copy()
-        probe[feature] = baseline[feature]
-        counterfactual = predict_power(artifact, probe.to_frame().T)
+        current[feature] = row[feature]
+        updated = predict_power(artifact, current.to_frame().T)
         records.append(
             {
                 "feature": feature,
                 "display": DISPLAY_NAMES.get(feature, feature),
                 "input": float(row[feature]),
                 "baseline": float(baseline[feature]),
-                "delta": counterfactual - actual,
+                "delta": updated - previous,
             }
         )
+        previous = updated
 
     table = pd.DataFrame(records)
     order = table["delta"].abs().sort_values(ascending=False).index
@@ -173,11 +176,11 @@ def target_band(value: float) -> str:
 __all__ = [
     "ARTIFACT_KEYS",
     "FEATURE_COLUMNS",
+    "contributions",
     "extrapolation_flags",
     "feature_importance",
     "load_artifact",
     "model_comparison",
     "predict_power",
-    "sensitivity",
     "target_band",
 ]

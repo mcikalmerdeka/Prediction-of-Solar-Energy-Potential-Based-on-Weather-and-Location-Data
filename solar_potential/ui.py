@@ -96,19 +96,26 @@ def importance_chart(frame: pd.DataFrame) -> alt.Chart:
     )
 
 
-def sensitivity_chart(frame: pd.DataFrame) -> alt.Chart:
-    """Per-prediction deltas: what this weather does versus typical weather."""
+def contribution_chart(frame: pd.DataFrame) -> alt.Chart:
+    """Per-prediction deltas: what this weather adds or removes versus typical.
+
+    A dot is drawn on every row as well as the bar, so a feature that changes
+    nothing still reads as "0.0" instead of vanishing into a zero-width bar.
+    """
     frame = frame.assign(
         direction=frame["delta"].map(
             lambda delta: "Adds output" if delta >= 0 else "Reduces output"
         )
     )
     order = frame["display"].tolist()
+    span = max(float(frame["delta"].abs().max()), 1.0) * 1.15
+    scale = alt.Scale(domain=[-span, span])
+
     bars = (
         alt.Chart(frame)
         .mark_bar(cornerRadius=3)
         .encode(
-            x=alt.X("delta:Q", title="Change vs typical conditions (W)"),
+            x=alt.X("delta:Q", title="Change vs typical conditions (W)", scale=scale),
             y=alt.Y("display:N", title=None, sort=order),
             color=alt.Color(
                 "direction:N",
@@ -126,12 +133,20 @@ def sensitivity_chart(frame: pd.DataFrame) -> alt.Chart:
             ],
         )
     )
+    dots = (
+        alt.Chart(frame)
+        .mark_point(size=50, filled=True, color="#57534E")
+        .encode(
+            x=alt.X("delta:Q", scale=scale),
+            y=alt.Y("display:N", sort=order),
+        )
+    )
     rule = (
         alt.Chart(pd.DataFrame({"zero": [0.0]}))
         .mark_rule(color="#A8A29E", strokeWidth=1)
         .encode(x="zero:Q")
     )
-    return (bars + rule).properties(height=alt.Step(30))
+    return (bars + rule + dots).properties(height=alt.Step(30))
 
 
 def gauge_chart(value: float, low: float = 0.0, high: float = 35.0) -> alt.Chart:

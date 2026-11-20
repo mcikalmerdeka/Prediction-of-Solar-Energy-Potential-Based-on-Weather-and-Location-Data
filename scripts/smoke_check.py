@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from solar_potential.data import (  # noqa: E402
@@ -102,10 +103,10 @@ import joblib  # noqa: E402
 from sklearn.ensemble import RandomForestRegressor  # noqa: E402
 
 from solar_potential.analytics import (  # noqa: E402
+    contributions,
     load_artifact,
     model_comparison,
     predict_power,
-    sensitivity,
 )
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -118,12 +119,19 @@ with tempfile.TemporaryDirectory() as tmp:
     else:
         raise AssertionError("a bare estimator must be rejected")
 
+rng = np.random.default_rng(0)
 sample = pd.DataFrame(
-    [[25.0, 950.0, 300.0, 40.0, 7, 12]] * 50, columns=FEATURE_COLUMNS
+    {
+        "AmbientTemp": rng.uniform(0, 40, 60),
+        "Pressure": rng.uniform(800, 1020, 60),
+        "Cloud.Ceiling": rng.uniform(0, 722, 60),
+        "Humidity": rng.uniform(0, 100, 60),
+        "Month": rng.integers(1, 13, 60),
+        "Hour": rng.integers(10, 16, 60),
+    }
 )
-fitted = RandomForestRegressor(n_estimators=5, random_state=42).fit(
-    sample, [1.0] * 50
-)
+target = sample["AmbientTemp"] * 0.5 + sample["Month"] * 0.2
+fitted = RandomForestRegressor(n_estimators=25, random_state=42).fit(sample, target)
 bundle = {
     "model": fitted,
     "feature_columns": list(FEATURE_COLUMNS),
@@ -135,9 +143,13 @@ bundle = {
 value = predict_power(bundle, sample.iloc[[0]])
 assert isinstance(value, float) and value == value  # finite, not NaN
 
-table = sensitivity(bundle, sample.iloc[0], sample.median())
+row, baseline = sample.iloc[0], sample.median()
+table = contributions(bundle, row, baseline)
 assert len(table) == 6
 assert set(table.columns) == {"feature", "display", "input", "baseline", "delta"}
+# The breakdown must reconcile exactly with the two predictions it explains.
+gap = predict_power(bundle, row.to_frame().T) - predict_power(bundle, baseline.to_frame().T)
+assert abs(table["delta"].sum() - gap) < 1e-9, (table["delta"].sum(), gap)
 
 comparison = model_comparison({"Test Forest": bundle})
 assert list(comparison.columns) == ["Model", "CV R2", "CV MAE", "CV RMSE", "Test R2"]
@@ -209,8 +221,13 @@ for label, path in [("Random Forest", RF_MODEL_PATH), ("XGBoost", XGB_MODEL_PATH
     value = predict_power(artifact, row.to_frame().T)
     assert 0.0 <= value <= 40.0, (label, value)
 
-    table = sensitivity(artifact, row, dataset[list(preset)].median())
+    baseline = dataset[FEATURE_COLUMNS].median()
+    table = contributions(artifact, row, baseline)
     assert len(table) == len(artifact["feature_columns"])
+    gap = value - predict_power(artifact, baseline.to_frame().T)
+    assert abs(table["delta"].sum() - gap) < 1e-9, (label, table["delta"].sum(), gap)
+    # A real prediction against a neutral baseline must not be an all-zero panel.
+    assert table["delta"].abs().max() > 0.01, label
 
 print("end-to-end ok")
 
